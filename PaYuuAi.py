@@ -232,15 +232,15 @@ def main_app():
 if not st.session_state['logged_in']: login_register_page()
 else: main_app()
 def ask_gemini(prompt, api_key, model_name):
-    # 🛡️ ระบบทำความสะอาดกุญแจอัตโนมัติ (ลบเว้นวรรคและอักขระซ่อนเร้นที่อาจทำให้ Error)
-    clean_key = str(api_key).strip()
+    # 🛡️ ฝังกุญแจของนายหญิงลงไปตรงนี้โดยตรง (ลบคำว่า AIzaSy_... แล้วใส่กุญแจจริงของนายหญิง)
+    hardcoded_key = "AIzaSy_ใส่กุญแจของนายหญิงที่นี่"
     
-    # ⚙️ สลับสมองกลตามรุ่นที่เลือก
     actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={hardcoded_key}"
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={clean_key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
+    
     try:
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code == 200:
@@ -248,7 +248,6 @@ def ask_gemini(prompt, api_key, model_name):
         return f"Gemini Error ({response.status_code}): {response.text}"
     except Exception as e:
         return f"เกิดข้อผิดพลาด: {e}"
-
 def ask_huggingface(prompt, model_repo, api_key):
     # (คงโค้ดเดิมของ ask_huggingface ไว้)
     url = f"https://api-inference.huggingface.co/models/{model_repo}"
