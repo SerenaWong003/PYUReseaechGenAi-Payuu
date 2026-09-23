@@ -5,7 +5,23 @@ import time
 from urllib.parse import quote
 import sqlite3
 import hashlib
+import google.generativeai as genai
 
+def ask_gemini(prompt, api_key, model_name):
+    try:
+        # 1. ติดตั้งกุญแจให้ระบบของ Google โดยตรง
+        genai.configure(api_key=api_key)
+        
+        # 2. เลือกโมเดลที่ถูกต้อง
+        actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
+        
+        # 3. เรียกใช้งานโมเดล
+        model = genai.GenerativeModel(actual_model)
+        response = model.generate_content(prompt)
+        
+        return response.text
+    except Exception as e:
+        return f"เกิดข้อผิดพลาดในการประมวลผลของ Gemini: {e}"
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง 
 # ==========================================
