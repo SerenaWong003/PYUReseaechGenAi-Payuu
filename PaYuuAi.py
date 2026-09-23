@@ -2,32 +2,26 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 import time
-import smtplib
-from email.mime.text import MIMEText
-import uuid
 from urllib.parse import quote
 import sqlite3
 import hashlib
-SYSTEM_EMAIL = st.secrets.get("SYSTEM_EMAIL", "")
-SYSTEM_EMAIL_PWD = st.secrets.get("SYSTEM_EMAIL_PASSWORD", "")
+
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง 
 # ==========================================
 st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
 
-
-
-# ฐาน URL สำหรับแนบลิงก์ยืนยันตัวตน (เปลี่ยนเป็น URL จริงเมื่อ Deploy)
-BASE_URL = st.secrets.get("BASE_URL", "http://localhost:8501")
+# ดึงกุญแจจาก Streamlit Secrets
+CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN", "")
+CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY", "")
+PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY", "")
 
 # ==========================================
-# 🗄️ 2. ระบบฐานข้อมูลและเข้ารหัสผ่าน (Database & Hashing)
+# 🗄️ 2. ระบบฐานข้อมูลและเข้ารหัสผ่าน
 # ==========================================
-# สร้างการเชื่อมต่อ SQLite (เก็บเป็นไฟล์ users.db ในเครื่องเซิร์ฟเวอร์)
 conn = sqlite3.connect('users.db', check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, email TEXT, password TEXT, verified INTEGER)''')
-c.execute('''CREATE TABLE IF NOT EXISTS verify_tokens (token TEXT PRIMARY KEY, username TEXT)''')
 conn.commit()
 
 def hash_password(password):
@@ -35,48 +29,12 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 # ==========================================
-# 🔐 3. ระบบยืนยันตัวตน (Authentication & Email)
+# 🔐 3. ระบบยืนยันตัวตน (Bypass Email)
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'username' not in st.session_state: st.session_state['username'] = ""
 
-def send_verification_email(receiver_email, username, token):
-    verify_link = f"{BASE_URL}/?token={token}"
-    msg = MIMEText(f"เรียนคุณ {username},\n\nกรุณาคลิกลิงก์ด้านล่างเพื่อยืนยันบัญชีนักวิจัย:\n{verify_link}")
-    msg['Subject'] = 'ยืนยันบัญชี Payap Research Gen-AI Hub'
-    msg['From'] = SYSTEM_EMAIL
-    msg['To'] = receiver_email
-
-    try:
-        with smtplib.SMTP("smtp.gmail.com", 465) as server:
-            server.starttls()
-            server.login(SYSTEM_EMAIL, SYSTEM_EMAIL_PWD)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        print(f"SMTP Error: {e}")
-        return False
-
-def check_verification_url():
-    """ตรวจสอบ URL ว่ามีการกดลิงก์ยืนยันมาหรือไม่"""
-    if "token" in st.query_params:
-        token = st.query_params["token"]
-        c.execute('SELECT username FROM verify_tokens WHERE token=?', (token,))
-        result = c.fetchone()
-        
-        if result:
-            user = result[0]
-            # อัปเดตสถานะ verified = 1 (True)
-            c.execute('UPDATE users SET verified=1 WHERE username=?', (user,))
-            c.execute('DELETE FROM verify_tokens WHERE token=?', (token,))
-            conn.commit()
-            st.success(f"✅ บัญชี '{user}' ยืนยันสำเร็จ เข้าสู่ระบบได้เลยครับ")
-        else:
-            st.error("❌ ลิงก์ไม่ถูกต้องหรือถูกใช้งานไปแล้ว")
-        st.query_params.clear()
-
 def login_register_page():
-    check_verification_url()
     st.title("🏛️ Payap Research Gen-AI Hub")
     tab1, tab2 = st.tabs(["เข้าสู่ระบบ", "สมัครสมาชิก"])
     
@@ -85,16 +43,13 @@ def login_register_page():
         log_pwd = st.text_input("รหัสผ่าน", type="password", key="log_pwd")
         if st.button("เข้าสู่ระบบ"):
             hashed_pwd = hash_password(log_pwd)
-            c.execute('SELECT password, verified FROM users WHERE username=?', (log_user,))
+            c.execute('SELECT password FROM users WHERE username=?', (log_user,))
             user_record = c.fetchone()
             
             if user_record and user_record[0] == hashed_pwd:
-                if user_record[1] == 1:
-                    st.session_state['logged_in'] = True
-                    st.session_state['username'] = log_user
-                    st.rerun()
-                else:
-                    st.warning("⚠️ กรุณายืนยันลิงก์ในอีเมลก่อนครับ")
+                st.session_state['logged_in'] = True
+                st.session_state['username'] = log_user
+                st.rerun()
             else:
                 st.error("❌ ข้อมูลไม่ถูกต้อง")
 
@@ -102,28 +57,24 @@ def login_register_page():
         reg_user = st.text_input("ชื่อผู้ใช้ใหม่")
         reg_email = st.text_input("อีเมล")
         reg_pwd = st.text_input("รหัสผ่าน", type="password")
-        if st.button("สมัครและรับอีเมลยืนยัน"):
+        if st.button("สมัครสมาชิก (เข้าระบบทันที)"):
             c.execute('SELECT username FROM users WHERE username=?', (reg_user,))
             if c.fetchone():
-                st.warning("ชื่อผู้ใช้นี้มีในระบบแล้ว")
-            elif reg_user and reg_pwd and "@" in reg_email:
+                st.warning("⚠️ ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่นครับ")
+            elif reg_user and reg_pwd:
                 hashed_pwd = hash_password(reg_pwd)
-                c.execute('INSERT INTO users (username, email, password, verified) VALUES (?, ?, ?, 0)', 
+                # บันทึก verified = 1 เพื่อให้อนุมัติทันที
+                c.execute('INSERT INTO users (username, email, password, verified) VALUES (?, ?, ?, 1)', 
                           (reg_user, reg_email, hashed_pwd))
-                token = str(uuid.uuid4())
-                c.execute('INSERT INTO verify_tokens (token, username) VALUES (?, ?)', (token, reg_user))
                 conn.commit()
-                
-                with st.spinner("กำลังส่งอีเมล..."):
-                    if send_verification_email(reg_email, reg_user, token):
-                        st.success("ส่งอีเมลสำเร็จ! กรุณากดลิงก์เพื่อเปิดใช้งาน")
-                    else:
-                        st.error("ไม่สามารถส่งอีเมลได้ ตรวจสอบการตั้งค่า SMTP")
+                st.success("✅ สมัครสมาชิกสำเร็จ! สลับไปแท็บ 'เข้าสู่ระบบ' เพื่อล็อกอินได้เลยครับ")
+            else:
+                st.error("❌ กรุณากรอกข้อมูลให้ครบถ้วน")
 
 # ==========================================
 # 📚 4. ระบบดึงฐานข้อมูล (PubMed API)
 # ==========================================
-def search_pubmed_stable(query, max_results=3, retries=3):
+def search_pubmed_stable(query, max_results=3):
     safe_query = quote(query)
     base_params = f"&tool=PayapGenAI&email=research@payap.ac.th"
     if PUBMED_API_KEY: base_params += f"&api_key={PUBMED_API_KEY}"
@@ -152,7 +103,6 @@ def search_pubmed_stable(query, max_results=3, retries=3):
 # 🤖 5. ระบบ RAG & สมองกล AI (AI Inference)
 # ==========================================
 def ask_gemini(prompt, api_key):
-    """เรียกใช้ Google Gemini API แบบตรงผ่าน HTTP Requests"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
@@ -166,7 +116,6 @@ def ask_gemini(prompt, api_key):
         return f"เกิดข้อผิดพลาด: {e}"
 
 def ask_huggingface(prompt, model_repo, api_key):
-    """เรียกใช้โมเดล Open Source จาก Hugging Face"""
     url = f"https://api-inference.huggingface.co/models/{model_repo}"
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {"inputs": prompt, "parameters": {"max_new_tokens": 800, "temperature": 0.3}}
