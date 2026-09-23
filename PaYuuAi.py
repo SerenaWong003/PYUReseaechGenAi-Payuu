@@ -17,11 +17,9 @@ st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layo
 # ดึงกุญแจจาก Streamlit Secrets
 SYSTEM_EMAIL = st.secrets.get("SYSTEM_EMAIL", "")
 SYSTEM_EMAIL_PWD = st.secrets.get("SYSTEM_EMAIL_PASSWORD", "")
-CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN", "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
-")
+CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN", "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")
 CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY", "AQ.Ab8RN6KOpdqNuoF8N4NBhZTBYCbsQ8zqOBHUX9cb1dAyYhs9vQ")
-PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY", "55ca775dbcce505de81e116837ccbff61709
-")
+PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY", "55ca775dbcce505de81e116837ccbff61709")
 
 # ฐาน URL สำหรับแนบลิงก์ยืนยันตัวตน (เปลี่ยนเป็น URL จริงเมื่อ Deploy)
 BASE_URL = st.secrets.get("BASE_URL", "http://localhost:8501")
