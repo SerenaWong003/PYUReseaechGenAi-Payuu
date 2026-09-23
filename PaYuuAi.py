@@ -7,21 +7,6 @@ import sqlite3
 import hashlib
 import google.generativeai as genai
 
-def ask_gemini(prompt, api_key, model_name):
-    try:
-        # 1. ติดตั้งกุญแจให้ระบบของ Google โดยตรง
-        genai.configure(api_key=api_key)
-        
-        # 2. เลือกโมเดลที่ถูกต้อง
-        actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
-        
-        # 3. เรียกใช้งานโมเดล
-        model = genai.GenerativeModel(actual_model)
-        response = model.generate_content(prompt)
-        
-        return response.text
-    except Exception as e:
-        return f"เกิดข้อผิดพลาดในการประมวลผลของ Gemini: {e}"
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง 
 # ==========================================
@@ -123,17 +108,16 @@ def search_pubmed_stable(query, max_results=3):
 # ==========================================
 # 🤖 5. ระบบ RAG & สมองกล AI (AI Inference)
 # ==========================================
-def ask_gemini(prompt, api_key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    headers = {"Content-Type": "application/json"}
+def ask_gemini(prompt, api_key, model_name):
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        return f"Gemini Error: {response.text}"
+        # ใช้ไลบรารีใหม่ที่นายหญิงอัปเดตใน requirements.txt
+        genai.configure(api_key=api_key.strip())
+        actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
+        model = genai.GenerativeModel(actual_model)
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        return f"เกิดข้อผิดพลาด: {e}"
+        return f"เกิดข้อผิดพลาดในการประมวลผลของ Gemini: {e}"
 
 def ask_huggingface(prompt, model_repo, api_key):
     url = f"https://api-inference.huggingface.co/models/{model_repo}"
@@ -152,7 +136,7 @@ def ask_huggingface(prompt, model_repo, api_key):
 
 def run_ai_routing(prompt, model_name, api_key):
     if "Gemini" in model_name:
-        return ask_gemini(prompt, api_key)
+        return ask_gemini(prompt, api_key, model_name)
     else:
         repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
         return ask_huggingface(prompt, repo_id, api_key)
@@ -183,7 +167,7 @@ def main_app():
             
         st.divider()
         st.header("🌪️ โหมดวิเคราะห์ลึก")
-        use_mini_storm = st.checkbox("เปิดใช้งาน Mini STORM Pipeline", help="AI จะทำงาน 3 ขั้นตอน: ค้นหา -> ร่างโครง -> สรุปเชิงลึก (ใช้เวลาประมวลผลนานขึ้น)")
+        use_mini_storm = st.checkbox("เปิดใช้งาน Mini STORM Pipeline", help="AI จะทำงาน 3 ขั้นตอน: ค้นหา -> ร่างโครง -> สรุปเชิงลึก")
 
     st.title("🔬 ระบบประมวลผลงานวิจัยอัจฉริยะ")
     if "messages" not in st.session_state: st.session_state.messages = []
@@ -215,14 +199,12 @@ def main_app():
             if use_mini_storm and context_text and "Error" not in context_text:
                 response_ui += "🌪️ **[Mini STORM Pipeline Initiated]**\n"
                 
-                # Step 1: ให้ AI ร่างโครงสร้าง
                 with st.spinner("⚙️ Agent 1: กำลังสังเคราะห์ข้อมูลและร่างโครงสร้าง (Outline)..."):
                     outline_prompt = f"จากบทคัดย่อเหล่านี้ กรุณาสร้างโครงร่าง (Outline) 3 หัวข้อหลักสำหรับการเขียนบทความวิจัย:\n{context_text}"
                     outline_result = run_ai_routing(outline_prompt, selected_model, active_key)
                     response_ui += f"**📑 โครงร่างงานวิจัย (Outline):**\n{outline_result}\n\n"
                     st.markdown(response_ui)
                 
-                # Step 2: ให้ AI เขียนสรุปตามโครงสร้าง
                 with st.spinner("⚙️ Agent 2: กำลังขยายความและเขียนสรุปเชิงลึก..."):
                     draft_prompt = f"จากโครงร่างนี้:\n{outline_result}\n\nจงเขียนสรุปเชิงลึกโดยใช้ข้อมูลจากบทคัดย่อต่อไปนี้:\n{context_text}"
                     final_result = run_ai_routing(draft_prompt, selected_model, active_key)
@@ -230,12 +212,10 @@ def main_app():
                     st.markdown(response_ui)
             
             else:
-                # การทำงานแบบปกติ (Single Prompt)
                 with st.spinner(f"🤖 กำลังประมวลผลด้วย {selected_model}..."):
                     ai_prompt = query
                     if context_text and "Error" not in context_text and "ไม่พบ" not in context_text:
                         ai_prompt = f"สรุปข้อมูลและตอบคำถามโดยอิงจากงานวิจัยที่ให้มาเป็นหลัก\n\n[ข้อมูลอ้างอิง]:\n{context_text}\n\n[คำถาม]: {query}"
-
                     ai_result = run_ai_routing(ai_prompt, selected_model, active_key)
                     response_ui += f"🤖 **[ผลการวิเคราะห์]:**\n{ai_result}"
                     st.markdown(response_ui)
@@ -245,45 +225,7 @@ def main_app():
 # ==========================================
 # 🚀 7. ตัวจุดระเบิดระบบ
 # ==========================================
-if not st.session_state['logged_in']: login_register_page()
-else: main_app()
-def ask_gemini(prompt, api_key, model_name):
-    # 🛡️ ฝังกุญแจของนายหญิงลงไปตรงนี้โดยตรง (ลบคำว่า AIzaSy_... แล้วใส่กุญแจจริงของนายหญิง)
-    hardcoded_key = "AIzaSy_ใส่กุญแจของนายหญิงที่นี่"
-    
-    actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={hardcoded_key}"
-    
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    headers = {"Content-Type": "application/json"}
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        return f"Gemini Error ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"เกิดข้อผิดพลาด: {e}"
-def ask_huggingface(prompt, model_repo, api_key):
-    # (คงโค้ดเดิมของ ask_huggingface ไว้)
-    url = f"https://api-inference.huggingface.co/models/{model_repo}"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get('generated_text', 'ไม่สามารถสร้างข้อความได้')
-            return str(result)
-        return f"HF Error (อาจต้องรอโมเดลโหลดสักครู่): {response.text}"
-    except Exception as e:
-        return f"เกิดข้อผิดพลาด: {e}"
-
-def run_ai_routing(prompt, model_name, api_key):
-    if "Gemini" in model_name:
-        # ส่งชื่อโมเดลเข้าไปให้ระบบใหม่จัดการ
-        return ask_gemini(prompt, api_key, model_name)
-    else:
-        repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
-        return ask_huggingface(prompt, repo_id, api_key)
+if not st.session_state['logged_in']: 
+    login_register_page()
+else: 
+    main_app()
