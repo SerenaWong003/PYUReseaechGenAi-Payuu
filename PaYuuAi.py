@@ -8,7 +8,8 @@ import uuid
 from urllib.parse import quote
 import sqlite3
 import hashlib
-
+SYSTEM_EMAIL = st.secrets.get("SYSTEM_EMAIL", "")
+SYSTEM_EMAIL_PWD = st.secrets.get("SYSTEM_EMAIL_PASSWORD", "")
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง 
 # ==========================================
