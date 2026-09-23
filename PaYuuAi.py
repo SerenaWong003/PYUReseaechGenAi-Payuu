@@ -231,3 +231,44 @@ def main_app():
 # ==========================================
 if not st.session_state['logged_in']: login_register_page()
 else: main_app()
+def ask_gemini(prompt, api_key, model_name):
+    # 🛡️ ระบบทำความสะอาดกุญแจอัตโนมัติ (ลบเว้นวรรคและอักขระซ่อนเร้นที่อาจทำให้ Error)
+    clean_key = str(api_key).strip()
+    
+    # ⚙️ สลับสมองกลตามรุ่นที่เลือก
+    actual_model = "gemini-1.5-pro" if "Pro" in model_name else "gemini-1.5-flash"
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={clean_key}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {"Content-Type": "application/json"}
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        return f"Gemini Error ({response.status_code}): {response.text}"
+    except Exception as e:
+        return f"เกิดข้อผิดพลาด: {e}"
+
+def ask_huggingface(prompt, model_repo, api_key):
+    # (คงโค้ดเดิมของ ask_huggingface ไว้)
+    url = f"https://api-inference.huggingface.co/models/{model_repo}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get('generated_text', 'ไม่สามารถสร้างข้อความได้')
+            return str(result)
+        return f"HF Error (อาจต้องรอโมเดลโหลดสักครู่): {response.text}"
+    except Exception as e:
+        return f"เกิดข้อผิดพลาด: {e}"
+
+def run_ai_routing(prompt, model_name, api_key):
+    if "Gemini" in model_name:
+        # ส่งชื่อโมเดลเข้าไปให้ระบบใหม่จัดการ
+        return ask_gemini(prompt, api_key, model_name)
+    else:
+        repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
+        return ask_huggingface(prompt, repo_id, api_key)
