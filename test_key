@@ -1,0 +1,10 @@
+import requests
+
+
+API_KEY = "AQ.Ab8RN6JKAkLy3QUC0ZlMXlADfCcpZ_u0Q5e_FKNdfzIbprlHVw" 
+
+url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+payload = {"contents": [{"parts": [{"text": "สวัสดี นี่คือการทดสอบกุญแจ"}]}]}
+
+response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+print("ผลการทดสอบ:", response.text)
