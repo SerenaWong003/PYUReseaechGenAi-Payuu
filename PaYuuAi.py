@@ -229,3 +229,7 @@ if not st.session_state['logged_in']:
     login_register_page()
 else: 
     main_app()
+# สร้างบัญชีแอดมินอัตโนมัติ (User: admin / Pass: 1234)
+admin_pwd = hash_password("1234")
+c.execute("INSERT OR IGNORE INTO users (username, email, password, verified) VALUES ('admin', 'admin@payap.ac.th', ?, 1)", (admin_pwd,))
+conn.commit()
