@@ -13,7 +13,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
 
 CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN", "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")
-CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY", "AQ.Ab8RN6JKAkLy3QUC0ZlMXlADfCcpZ_u0Q5e_FKNdfzIbprlHVw")
+CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY", "AIzaSy_ใส่กุญแจจริงของนายหญิงตรงนี้")
 PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY", "55ca775dbcce505de81e116837ccbff61709")
 
 # ฐานข้อมูลโมเดล Hugging Face
@@ -233,3 +233,41 @@ else:
 admin_pwd = hash_password("1234")
 c.execute("INSERT OR IGNORE INTO users (username, email, password, verified) VALUES ('admin', 'admin@payap.ac.th', ?, 1)", (admin_pwd,))
 conn.commit()
+
+import google.generativeai as genai
+
+# นำกุญแจ AQ. ของนายหญิงมาวางในเครื่องหมายคำพูด (ระวังช่องว่าง)
+genai.configure(api_key="AQ.Ab8RN6JeTkAoXEJCJVsg6G3ge-cL4yCzNdTjcR6gVCPW2ch1TA")
+
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    response = model.generate_content("พายุขอทดสอบระบบ 123")
+    print("✅ กุญแจใช้งานได้สมบูรณ์ AI ตอบกลับว่า:", response.text)
+except Exception as e:
+    print("❌ พบข้อผิดพลาด:", e)
+
+import requests
+import json
+
+# 1. วางกุญแจ AQ. ของนายหญิงที่นี่
+API_KEY = "AQ.Ab8RN6JeTkAoXEJCJVsg6G3ge-cL4yCzNdTjcR6gVCPW2ch1TA"
+
+# 2. ยิงตรงเข้าฐานข้อมูล Google โดยแนบกุญแจไปใน URL
+url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+
+headers = {'Content-Type': 'application/json'}
+data = {
+    "contents": [{"parts": [{"text": "พายุรายงานตัว ขอกล่าวทักทายเป็นภาษาไทย 1 ประโยค"}]}]
+}
+
+print("กำลังเจาะเกราะระบบ...")
+response = requests.post(url, headers=headers, data=json.dumps(data))
+
+# 3. แสดงผลลัพธ์
+if response.status_code == 200:
+    result = response.json()
+    text_reply = result['candidates'][0]['content']['parts'][0]['text']
+    print("✅ ทะลวงด่านสำเร็จ! AI ตอบกลับว่า:", text_reply)
+else:
+    print("❌ ด่านตรวจยังปฏิเสธ รหัส:", response.status_code)
+    print("รายละเอียด:", response.text)
