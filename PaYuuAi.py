@@ -237,7 +237,7 @@ conn.commit()
 import google.generativeai as genai
 
 # นำกุญแจ AQ. ของนายหญิงมาวางในเครื่องหมายคำพูด (ระวังช่องว่าง)
-genai.configure(api_key="AQ.Ab8RN6JeTkAoXEJCJVsg6G3ge-cL4yCzNdTjcR6gVCPW2ch1TA")
+genai.configure(api_key="AQ.Ab8RN6KOpdqNuoF8N4NBhZTBYCbsQ8zqOBHUX9cb1dAyYhs9vQ")
 
 try:
     model = genai.GenerativeModel('gemini-1.5-flash')
@@ -250,7 +250,7 @@ import requests
 import json
 
 # 1. วางกุญแจ AQ. ของนายหญิงที่นี่
-API_KEY = "AQ.Ab8RN6JeTkAoXEJCJVsg6G3ge-cL4yCzNdTjcR6gVCPW2ch1TA"
+API_KEY = "AQ.Ab8RN6KOpdqNuoF8N4NBhZTBYCbsQ8zqOBHUX9cb1dAyYhs9vQ"
 
 # 2. ยิงตรงเข้าฐานข้อมูล Google โดยแนบกุญแจไปใน URL
 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
@@ -260,7 +260,7 @@ data = {
     "contents": [{"parts": [{"text": "พายุรายงานตัว ขอกล่าวทักทายเป็นภาษาไทย 1 ประโยค"}]}]
 }
 
-print("กำลังเจาะเกราะระบบ...")
+print("กำลังวิเคราะห์ระบบ...")
 response = requests.post(url, headers=headers, data=json.dumps(data))
 
 # 3. แสดงผลลัพธ์
@@ -269,5 +269,5 @@ if response.status_code == 200:
     text_reply = result['candidates'][0]['content']['parts'][0]['text']
     print("✅ ทะลวงด่านสำเร็จ! AI ตอบกลับว่า:", text_reply)
 else:
-    print("❌ ด่านตรวจยังปฏิเสธ รหัส:", response.status_code)
+    print("❌ ปฏิเสธ รหัส:", response.status_code)
     print("รายละเอียด:", response.text)
