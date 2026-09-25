@@ -46,9 +46,10 @@ GEMINI_MODEL_MAP = {
 }
 
 # ==========================================
-# 🗄️ 2. ระบบฐานข้อมูล (Users & Chat History)
+# 🗄️ 2. ระบบฐานข้อมูล (สละไฟล์เก่า สร้างไฟล์ v2)
 # ==========================================
-conn = sqlite3.connect('users.db', check_same_thread=False)
+# เปลี่ยนชื่อไฟล์เพื่อบังคับสร้างฐานข้อมูลโครงสร้างใหม่ทั้งหมด ป้องกันบั๊ก schema เก่า
+conn = sqlite3.connect('payap_genai_v2.db', check_same_thread=False)
 c = conn.cursor()
 
 # ตารางผู้ใช้งาน
@@ -244,7 +245,14 @@ def main_app():
         user_badge = "👑 ผู้ดูแลระบบ" if st.session_state['role'] == 'admin' else "👨‍🔬 นักวิจัย"
         st.header(f"{user_badge}: {st.session_state['username']}")
         
-        if st.button("ออกจากระบบ"):
+        # ปุ่มสำหรับเคลียร์หน้าจอและลบประวัติ เริ่มบทสนทนาใหม่
+        if st.button("➕ เพิ่มแชทใหม่", use_container_width=True, type="primary"):
+            c.execute("DELETE FROM chat_history WHERE username=?", (st.session_state['username'],))
+            conn.commit()
+            st.session_state.messages = []
+            st.rerun()
+
+        if st.button("ออกจากระบบ", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
@@ -278,12 +286,6 @@ def main_app():
         st.divider()
         st.header("🌪️ โหมดวิเคราะห์ลึก")
         use_mini_storm = st.checkbox("เปิดใช้งาน Mini STORM Pipeline")
-        
-        if st.button("🗑️ ล้างประวัติแชท"):
-            c.execute("DELETE FROM chat_history WHERE username=?", (st.session_state['username'],))
-            conn.commit()
-            st.session_state.messages = []
-            st.rerun()
 
     st.title("🔬 ระบบประมวลผลงานวิจัยอัจฉริยะ")
     
