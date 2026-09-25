@@ -7,6 +7,8 @@ import os
 import hashlib
 import binascii
 import sqlite3
+import uuid
+from datetime import datetime
 from urllib.parse import quote
 import google.generativeai as genai
 
@@ -31,7 +33,6 @@ _missing_core = [k for k, v in {
 if _missing_core:
     st.warning(f"⚠️ ยังไม่ได้ตั้งค่า secrets: {', '.join(_missing_core)} — โหมด 'ฟรี (ส่วนกลาง)' อาจใช้งานไม่ได้")
 
-# ฐานข้อมูลโมเดล
 HF_MODELS = {
     "SeaLLMs (ภาษาไทย)": "SeaLLMs/SeaLLM-7B-v2.5",
     "Vicuna (ตรรกะ/ทีมเวิร์ค)": "lmsys/vicuna-7b-v1.5",
@@ -46,19 +47,19 @@ GEMINI_MODEL_MAP = {
 }
 
 # ==========================================
-# 🗄️ 2. ระบบฐานข้อมูล (สละไฟล์เก่า สร้างไฟล์ v2)
+# 🗄️ 2. ระบบฐานข้อมูล v3 (รองรับ Multiple Chat Sessions)
 # ==========================================
-# เปลี่ยนชื่อไฟล์เพื่อบังคับสร้างฐานข้อมูลโครงสร้างใหม่ทั้งหมด ป้องกันบั๊ก schema เก่า
-conn = sqlite3.connect('payap_genai_v2.db', check_same_thread=False)
+conn = sqlite3.connect('payap_genai_v3.db', check_same_thread=False)
 c = conn.cursor()
 
-# ตารางผู้ใช้งาน
 c.execute('''CREATE TABLE IF NOT EXISTS users
              (username TEXT PRIMARY KEY, email TEXT, password TEXT, salt TEXT, verified INTEGER, role TEXT DEFAULT 'user')''')
 
-# ตารางประวัติการสนทนา
+c.execute('''CREATE TABLE IF NOT EXISTS chat_sessions
+             (session_id TEXT PRIMARY KEY, username TEXT, title TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
 c.execute('''CREATE TABLE IF NOT EXISTS chat_history
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, sender TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, username TEXT, sender TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 conn.commit()
 
 PBKDF2_ITERATIONS = 200_000
@@ -79,6 +80,7 @@ def verify_password(password: str, stored_hash: str, stored_salt: str) -> bool:
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'username' not in st.session_state: st.session_state['username'] = ""
 if 'role' not in st.session_state: st.session_state['role'] = "user"
+if 'current_session_id' not in st.session_state: st.session_state['current_session_id'] = None
 if 'messages_loaded' not in st.session_state: st.session_state['messages_loaded'] = False
 
 def login_register_page():
@@ -95,6 +97,7 @@ def login_register_page():
                 st.session_state['logged_in'] = True
                 st.session_state['username'] = log_user
                 st.session_state['role'] = user_record[2]
+                st.session_state['current_session_id'] = None
                 st.session_state['messages_loaded'] = False
                 st.rerun()
             else:
@@ -119,7 +122,6 @@ def login_register_page():
             else:
                 st.error("❌ กรุณากรอกข้อมูลให้ครบถ้วน")
 
-# สร้างบัญชีแอดมินอัตโนมัติจาก Secrets
 _admin_user = st.secrets.get("ADMIN_USERNAME", "")
 _admin_pass = st.secrets.get("ADMIN_PASSWORD", "")
 if _admin_user and _admin_pass:
@@ -241,20 +243,50 @@ def run_ai_routing(prompt, model_name, api_key):
 # 💻 6. หน้าต่างปฏิบัติการ (Main Workspace)
 # ==========================================
 def main_app():
+    username = st.session_state['username']
+    
+    # 6.1 ตรวจสอบและสร้าง Session เริ่มต้น
+    if not st.session_state.get('current_session_id'):
+        c.execute("SELECT session_id FROM chat_sessions WHERE username=? ORDER BY updated_at DESC LIMIT 1", (username,))
+        row = c.fetchone()
+        if row:
+            st.session_state['current_session_id'] = row[0]
+        else:
+            new_session = str(uuid.uuid4())
+            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, "แชทใหม่"))
+            conn.commit()
+            st.session_state['current_session_id'] = new_session
+
+    # 6.2 การตั้งค่าแถบด้านข้าง (Sidebar)
     with st.sidebar:
         user_badge = "👑 ผู้ดูแลระบบ" if st.session_state['role'] == 'admin' else "👨‍🔬 นักวิจัย"
-        st.header(f"{user_badge}: {st.session_state['username']}")
+        st.header(f"{user_badge}: {username}")
         
-        # ปุ่มสำหรับเคลียร์หน้าจอและลบประวัติ เริ่มบทสนทนาใหม่
         if st.button("➕ เพิ่มแชทใหม่", use_container_width=True, type="primary"):
-            c.execute("DELETE FROM chat_history WHERE username=?", (st.session_state['username'],))
+            new_session = str(uuid.uuid4())
+            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, "แชทใหม่"))
             conn.commit()
-            st.session_state.messages = []
+            st.session_state['current_session_id'] = new_session
+            st.session_state['messages_loaded'] = False
             st.rerun()
 
         if st.button("ออกจากระบบ", use_container_width=True):
             st.session_state.clear()
             st.rerun()
+
+        # แสดงรายการประวัติการสนทนาทั้งหมด
+        st.divider()
+        st.subheader("💬 ประวัติการสนทนา")
+        c.execute("SELECT session_id, title FROM chat_sessions WHERE username=? ORDER BY updated_at DESC", (username,))
+        all_sessions = c.fetchall()
+        
+        for sess_id, title in all_sessions:
+            is_active = (sess_id == st.session_state['current_session_id'])
+            btn_label = f"🟢 {title}" if is_active else f"📄 {title}"
+            if st.button(btn_label, key=f"btn_{sess_id}", use_container_width=True):
+                st.session_state['current_session_id'] = sess_id
+                st.session_state['messages_loaded'] = False
+                st.rerun()
 
         if st.session_state['role'] == 'admin':
             st.divider()
@@ -266,9 +298,7 @@ def main_app():
         st.divider()
         st.header("⚙️ ตั้งค่ามันสมอง AI")
         ai_mode = st.radio("โหมดการเข้าถึง:", ["🌟 ฟรี (ส่วนกลาง)", "🔑 ขั้นสูง (BYOK)"])
-
         selected_model, active_key = None, None
-
         if ai_mode == "🌟 ฟรี (ส่วนกลาง)":
             model_options = list(GEMINI_MODEL_MAP.keys()) + list(HF_MODELS.keys())
             selected_model = st.selectbox("เลือก AI:", model_options)
@@ -287,10 +317,12 @@ def main_app():
         st.header("🌪️ โหมดวิเคราะห์ลึก")
         use_mini_storm = st.checkbox("เปิดใช้งาน Mini STORM Pipeline")
 
+    # 6.3 หน้าจอสนทนาหลัก
     st.title("🔬 ระบบประมวลผลงานวิจัยอัจฉริยะ")
+    current_session = st.session_state['current_session_id']
     
     if not st.session_state['messages_loaded']:
-        c.execute("SELECT sender, message FROM chat_history WHERE username=? ORDER BY timestamp ASC", (st.session_state['username'],))
+        c.execute("SELECT sender, message FROM chat_history WHERE session_id=? ORDER BY timestamp ASC", (current_session,))
         chat_rows = c.fetchall()
         st.session_state.messages = [{"role": row[0], "content": row[1]} for row in chat_rows]
         st.session_state['messages_loaded'] = True
@@ -303,9 +335,19 @@ def main_app():
             st.error("⚠️ โหมด BYOK บังคับให้ใส่ API Key ส่วนตัวก่อนครับ!")
             return
 
+        # อัปเดตชื่อแชทอัตโนมัติหากยังเป็น "แชทใหม่"
+        c.execute("SELECT title FROM chat_sessions WHERE session_id=?", (current_session,))
+        current_title = c.fetchone()[0]
+        if current_title == "แชทใหม่":
+            new_title = query[:25] + "..." if len(query) > 25 else query
+            c.execute("UPDATE chat_sessions SET title=? WHERE session_id=?", (new_title, current_session))
+            conn.commit()
+
         st.session_state.messages.append({"role": "user", "content": query})
         with st.chat_message("user"): st.markdown(query)
-        c.execute("INSERT INTO chat_history (username, sender, message) VALUES (?, ?, ?)", (st.session_state['username'], 'user', query))
+        
+        c.execute("INSERT INTO chat_history (session_id, username, sender, message) VALUES (?, ?, ?, ?)", (current_session, username, 'user', query))
+        c.execute("UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE session_id=?", (current_session,))
         conn.commit()
 
         with st.chat_message("assistant"):
@@ -341,7 +383,7 @@ def main_app():
                     st.markdown(f"🤖 **[ผลการวิเคราะห์]:**\n{ai_result}")
 
             st.session_state.messages.append({"role": "assistant", "content": response_ui})
-            c.execute("INSERT INTO chat_history (username, sender, message) VALUES (?, ?, ?)", (st.session_state['username'], 'assistant', response_ui))
+            c.execute("INSERT INTO chat_history (session_id, username, sender, message) VALUES (?, ?, ?, ?)", (current_session, username, 'assistant', response_ui))
             conn.commit()
 
 # ==========================================
