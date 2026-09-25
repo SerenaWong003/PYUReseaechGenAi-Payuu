@@ -217,25 +217,46 @@ def run_source_search(sources, cleaned_query, max_results=3):
     return "\n\n---\n\n".join(contexts)
 
 # ==========================================
+# ==========================================
 # 🤖 5. ระบบ RAG & สมองกล AI (AI Inference)
 # ==========================================
 def run_ai_routing(prompt, model_name, api_key):
+    # 🛡️ เกราะป้องกันขั้นสูงสุดจากจั่นเจา: ดักจับกุญแจว่างเปล่า
+    if not api_key or str(api_key).strip() == "":
+        return "⚠️ [ระบบป้องกันภัย] จั่นเจาตรวจพบว่า API Key เป็นค่าว่างครับ!\n- หากใช้โหมด 'ส่วนกลาง' โปรดตรวจสอบไฟล์ Secrets ว่ามีการใส่ค่า GEMINI_FREE_KEY แล้ว\n- หากใช้โหมด 'BYOK' โปรดพิมพ์กุญแจในกล่องด้านข้างให้ครบถ้วนครับ"
+
     try:
         if "Gemini" in model_name:
+            # ล้างค่าคอนฟิกเดิมออกก่อน เพื่อป้องกันกุญแจเก่าค้างในระบบ
+            os.environ.pop("GOOGLE_API_KEY", None) 
             genai.configure(api_key=api_key.strip())
+            
             model = genai.GenerativeModel(GEMINI_MODEL_MAP.get(model_name, "gemini-1.5-flash"))
             return model.generate_content(prompt).text
+            
         elif "GPT" in model_name or "OpenAI" in model_name:
-            res = requests.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}], "temperature": 0.3}, timeout=30)
+            res = requests.post(
+                "https://api.openai.com/v1/chat/completions", 
+                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"}, 
+                json={"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}], "temperature": 0.3}, 
+                timeout=30
+            )
             res.raise_for_status()
             return res.json()["choices"][0]["message"]["content"]
+            
         else:
             repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
-            res = requests.post(f"https://api-inference.huggingface.co/models/{repo_id}", headers={"Authorization": f"Bearer {api_key}"}, json={"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}, timeout=30)
+            res = requests.post(
+                f"https://api-inference.huggingface.co/models/{repo_id}", 
+                headers={"Authorization": f"Bearer {api_key.strip()}"}, 
+                json={"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}, 
+                timeout=30
+            )
             if res.status_code == 200:
                 data = res.json()
                 return data[0].get('generated_text', 'No output') if isinstance(data, list) else str(data)
             return f"HF Error: {res.text}"
+            
     except Exception as e:
         return f"เกิดข้อผิดพลาดในการประมวลผล: {e}"
 
