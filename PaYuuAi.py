@@ -19,7 +19,7 @@ import pandas as pd # เพิ่ม pandas สำหรับทำตาร�
 st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
 
 CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","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")
-CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","AQ.Ab8RN6IrVY1lgOHmkIGuSLzExFFyD3HSq6KHl0PHhvtj0T40GQ")
+CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","AQ.Ab8RN6L5zng4goRohJNC2dJjrsb6PiolQjoeNK49jlYouhdFjw")
 PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY","55ca775dbcce505de81e116837ccbff61709")
 
 EBSCO_USER_ID = st.secrets.get("EBSCO_USER_ID", "")
