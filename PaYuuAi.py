@@ -11,15 +11,32 @@ import uuid
 from datetime import datetime
 from urllib.parse import quote
 import google.generativeai as genai
-
+<script src="https://apis.google.com/js/platform.js" async defer></script>
+<div class="g-signin2" data-onsuccess="onSignIn"></div>
+function onSignIn(googleUser) {
+  var profile = googleUser.getBasicProfile();
+  console.log('ID: ' + profile.getId()); // Do not send to your backend! Use an ID token instead.
+  console.log('Name: ' + profile.getName());
+  console.log('Image URL: ' + profile.getImageUrl());
+  console.log('Email: ' + profile.getEmail()); // This is null if the 'email' scope is not present.
+}
+<a href="#" onclick="signOut();">Sign out</a>
+<script>
+  function signOut() {
+    var auth2 = gapi.auth2.getAuthInstance();
+    auth2.signOut().then(function () {
+      console.log('User signed out.');
+    });
+  }
+</script>
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง
 # ==========================================
 st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
 
-CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN", "")
-CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY", "")
-PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY", "")
+CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","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")
+CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","AQ.Ab8RN6IrVY1lgOHmkIGuSLzExFFyD3HSq6KHl0PHhvtj0T40GQ")
+PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY","55ca775dbcce505de81e116837ccbff61709")
 
 EBSCO_USER_ID = st.secrets.get("EBSCO_USER_ID", "")
 EBSCO_PASSWORD = st.secrets.get("EBSCO_PASSWORD", "")
@@ -217,48 +234,65 @@ def run_source_search(sources, cleaned_query, max_results=3):
     return "\n\n---\n\n".join(contexts)
 
 # ==========================================
-# ==========================================
 # 🤖 5. ระบบ RAG & สมองกล AI (AI Inference)
 # ==========================================
-def run_ai_routing(prompt, model_name, api_key):
-    # 🛡️ เกราะป้องกันขั้นสูงสุดจากจั่นเจา: ดักจับกุญแจว่างเปล่า
-    if not api_key or str(api_key).strip() == "":
-        return "⚠️ [ระบบป้องกันภัย] จั่นเจาตรวจพบว่า API Key เป็นค่าว่างครับ!\n- หากใช้โหมด 'ส่วนกลาง' โปรดตรวจสอบไฟล์ Secrets ว่ามีการใส่ค่า GEMINI_FREE_KEY แล้ว\n- หากใช้โหมด 'BYOK' โปรดพิมพ์กุญแจในกล่องด้านข้างให้ครบถ้วนครับ"
+import time
 
-    try:
-        if "Gemini" in model_name:
-            # ล้างค่าคอนฟิกเดิมออกก่อน เพื่อป้องกันกุญแจเก่าค้างในระบบ
-            os.environ.pop("GOOGLE_API_KEY", None) 
-            genai.configure(api_key=api_key.strip())
+def run_ai_routing(prompt, model_name, api_key):
+    # 🛡️ ดักจับกุญแจว่างเปล่า
+    if not api_key or str(api_key).strip() == "":
+        return "⚠️ [ระบบป้องกันภัย]: ไม่พบ API Key หรือกุญแจถูกระงับ กรุณาตรวจสอบ Secrets ครับ"
+
+    max_retries = 3
+    retry_delay = 2 # หน่วงเวลา 2 วินาทีก่อนลองใหม่
+
+    for attempt in range(max_retries):
+        try:
+            if "Gemini" in model_name:
+                os.environ.pop("GOOGLE_API_KEY", None) 
+                genai.configure(api_key=api_key.strip())
+                model = genai.GenerativeModel(GEMINI_MODEL_MAP.get(model_name, "gemini-1.5-flash"))
+                return model.generate_content(prompt).text
+                
+            elif "GPT" in model_name or "OpenAI" in model_name:
+                res = requests.post(
+                    "https://api.openai.com/v1/chat/completions", 
+                    headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"}, 
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}], "temperature": 0.3}, 
+                    timeout=30
+                )
+                res.raise_for_status()
+                return res.json()["choices"][0]["message"]["content"]
+                
+            else:
+                repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
+                res = requests.post(
+                    f"https://api-inference.huggingface.co/models/{repo_id}", 
+                    headers={"Authorization": f"Bearer {api_key.strip()}"}, 
+                    json={"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}, 
+                    timeout=30
+                )
+                res.raise_for_status() # ดัก Error 401 หรือ 500 ทันที
+                if res.status_code == 200:
+                    data = res.json()
+                    return data[0].get('generated_text', 'No output') if isinstance(data, list) else str(data)
+                return f"HF Error: {res.text}"
+                
+        # ดักจับปัญหาอินเทอร์เน็ตหลุด / หาเซิร์ฟเวอร์ไม่เจอ (NameResolutionError)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                continue # ลองวนลูปใหม่
+            return f"⚠️ ระบบเครือข่ายขัดข้อง: ไม่สามารถเชื่อมต่อกับ {model_name} ได้หลังจากพยายาม {max_retries} ครั้ง โปรดลองใหม่ภายหลังครับ"
             
-            model = genai.GenerativeModel(GEMINI_MODEL_MAP.get(model_name, "gemini-1.5-flash"))
-            return model.generate_content(prompt).text
+        # ดักจับปัญหาอื่นๆ เช่น กุญแจพัง กุญแจหมดอายุ (401 Unauthorized)
+        except requests.exceptions.HTTPError as e:
+            if "401" in str(e):
+                 return "⚠️ [แจ้งเตือนความปลอดภัย]: API Key ของท่านถูกปฏิเสธ (อาจถูกเพิกถอนเนื่องจากหลุดไปบนอินเทอร์เน็ต) โปรดเปลี่ยนกุญแจใหม่ครับ"
+            return f"เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ API: {e}"
             
-        elif "GPT" in model_name or "OpenAI" in model_name:
-            res = requests.post(
-                "https://api.openai.com/v1/chat/completions", 
-                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"}, 
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}], "temperature": 0.3}, 
-                timeout=30
-            )
-            res.raise_for_status()
-            return res.json()["choices"][0]["message"]["content"]
-            
-        else:
-            repo_id = HF_MODELS.get(model_name, "SeaLLMs/SeaLLM-7B-v2.5")
-            res = requests.post(
-                f"https://api-inference.huggingface.co/models/{repo_id}", 
-                headers={"Authorization": f"Bearer {api_key.strip()}"}, 
-                json={"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}, 
-                timeout=30
-            )
-            if res.status_code == 200:
-                data = res.json()
-                return data[0].get('generated_text', 'No output') if isinstance(data, list) else str(data)
-            return f"HF Error: {res.text}"
-            
-    except Exception as e:
-        return f"เกิดข้อผิดพลาดในการประมวลผล: {e}"
+        except Exception as e:
+            return f"เกิดข้อผิดพลาดในการประมวลผล: {e}"
 
 # ==========================================
 # 💻 6. หน้าต่างปฏิบัติการ (Main Workspace)
