@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from urllib.parse import quote
 import google.generativeai as genai
-<script src="https://apis.google.com/js/platform.js" async defer></script>
+
 <div class="g-signin2" data-onsuccess="onSignIn"></div>
 function onSignIn(googleUser) {
   var profile = googleUser.getBasicProfile();
