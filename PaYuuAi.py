@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 from urllib.parse import quote
 import google.generativeai as genai
+import pandas as pd # เพิ่ม pandas สำหรับทำตารางแผงควบคุม Admin
 
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง
@@ -34,11 +35,11 @@ if _missing_core:
     st.warning(f"⚠️ ยังไม่ได้ตั้งค่า secrets: {', '.join(_missing_core)} — โหมด 'ฟรี (ส่วนกลาง)' อาจใช้งานไม่ได้")
 
 HF_MODELS = {
-    "SeaLLMs (ภาษาไทย)": "SeaLLMs/SeaLLM-7B-v2.5",
-    "Vicuna (ตรรกะ/ทีมเวิร์ค)": "lmsys/vicuna-7b-v1.5",
-    "Alpaca (จัดการฟอร์แมต)": "chavinlo/alpaca-native",
+    "SeaLLMs (ภาษาไทย/Thai)": "SeaLLMs/SeaLLM-7B-v2.5",
+    "Vicuna (ตรรกะ/Logic)": "lmsys/vicuna-7b-v1.5",
+    "Alpaca (จัดการฟอร์แมต/Format)": "chavinlo/alpaca-native",
     "Gorilla (เขียนโค้ด/API)": "gorilla-llm/gorilla-7b-hf-v0",
-    "ChatGLM (อ่านบริบทยาว)": "THUDM/chatglm3-6b",
+    "ChatGLM (อ่านบริบทยาว/Long context)": "THUDM/chatglm3-6b",
 }
 
 GEMINI_MODEL_MAP = {
@@ -47,7 +48,15 @@ GEMINI_MODEL_MAP = {
 }
 
 # ==========================================
-# 🗄️ 2. ระบบฐานข้อมูล v3 (รองรับ Multiple Chat Sessions)
+# 🌐 ระบบภาษา (Language Translation Helper)
+# ==========================================
+if 'lang' not in st.session_state: st.session_state['lang'] = 'TH'
+
+def t(th_text, en_text):
+    return en_text if st.session_state['lang'] == 'EN' else th_text
+
+# ==========================================
+# 🗄️ 2. ระบบฐานข้อมูล v3
 # ==========================================
 conn = sqlite3.connect('payap_genai_v3.db', check_same_thread=False)
 c = conn.cursor()
@@ -84,13 +93,17 @@ if 'current_session_id' not in st.session_state: st.session_state['current_sessi
 if 'messages_loaded' not in st.session_state: st.session_state['messages_loaded'] = False
 
 def login_register_page():
-    st.title("🏛️ Payap Research Gen-AI Hub")
-    tab1, tab2 = st.tabs(["เข้าสู่ระบบ", "สมัครสมาชิก"])
+    # ส่วนตั้งค่าภาษาก่อนล็อกอิน
+    lang_sel = st.radio("Language / ภาษา", ["TH", "EN"], horizontal=True, key="login_lang")
+    st.session_state['lang'] = lang_sel
+
+    st.title(t("🏛️ Payap Research Gen-AI Hub", "🏛️ Payap Research Gen-AI Hub"))
+    tab1, tab2 = st.tabs([t("เข้าสู่ระบบ", "Login"), t("สมัครสมาชิก", "Register")])
 
     with tab1:
-        log_user = st.text_input("ชื่อผู้ใช้", key="log_user")
-        log_pwd = st.text_input("รหัสผ่าน", type="password", key="log_pwd")
-        if st.button("เข้าสู่ระบบ"):
+        log_user = st.text_input(t("ชื่อผู้ใช้", "Username"), key="log_user")
+        log_pwd = st.text_input(t("รหัสผ่าน", "Password"), type="password", key="log_pwd")
+        if st.button(t("เข้าสู่ระบบ", "Login")):
             c.execute('SELECT password, salt, role FROM users WHERE username=?', (log_user,))
             user_record = c.fetchone()
             if user_record and verify_password(log_pwd, user_record[0], user_record[1]):
@@ -101,16 +114,16 @@ def login_register_page():
                 st.session_state['messages_loaded'] = False
                 st.rerun()
             else:
-                st.error("❌ ข้อมูลไม่ถูกต้อง")
+                st.error(t("❌ ข้อมูลไม่ถูกต้อง", "❌ Invalid credentials"))
 
     with tab2:
-        reg_user = st.text_input("ชื่อผู้ใช้ใหม่")
-        reg_email = st.text_input("อีเมล")
-        reg_pwd = st.text_input("รหัสผ่าน", type="password")
-        if st.button("สมัครสมาชิก (เข้าระบบทันที)"):
+        reg_user = st.text_input(t("ชื่อผู้ใช้ใหม่", "New Username"))
+        reg_email = st.text_input(t("อีเมล", "Email"))
+        reg_pwd = st.text_input(t("รหัสผ่าน", "Password"), type="password", key="reg_pwd_input")
+        if st.button(t("สมัครสมาชิก (เข้าระบบทันที)", "Register (Auto-login)")):
             c.execute('SELECT username FROM users WHERE username=?', (reg_user,))
             if c.fetchone():
-                st.warning("⚠️ ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่นครับ")
+                st.warning(t("⚠️ ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาใช้ชื่ออื่นครับ", "⚠️ Username already exists."))
             elif reg_user and reg_pwd:
                 hashed_pwd, salt_hex = hash_password(reg_pwd)
                 c.execute(
@@ -118,9 +131,9 @@ def login_register_page():
                     (reg_user, reg_email, hashed_pwd, salt_hex, 1, 'user')
                 )
                 conn.commit()
-                st.success("✅ สมัครสมาชิกสำเร็จ! สลับไปแท็บ 'เข้าสู่ระบบ' เพื่อล็อกอินได้เลยครับ")
+                st.success(t("✅ สมัครสมาชิกสำเร็จ! สลับไปแท็บ 'เข้าสู่ระบบ' เพื่อล็อกอินได้เลยครับ", "✅ Registration successful! Please login."))
             else:
-                st.error("❌ กรุณากรอกข้อมูลให้ครบถ้วน")
+                st.error(t("❌ กรุณากรอกข้อมูลให้ครบถ้วน", "❌ Please fill in all fields."))
 
 _admin_user = st.secrets.get("ADMIN_USERNAME", "")
 _admin_pass = st.secrets.get("ADMIN_PASSWORD", "")
@@ -137,16 +150,16 @@ if _admin_user and _admin_pass:
 # ==========================================
 # 📚 4. ระบบดึงฐานข้อมูล (PubMed & EBSCO)
 # ==========================================
+# (คงฟังก์ชัน search_pubmed_stable, search_ebsco_stable, detect_sources, run_source_search ไว้เหมือนเดิมทุกประการ)
 def search_pubmed_stable(query, max_results=3):
     safe_query = quote(query)
     base_params = "&tool=PayapGenAI&email=research@payap.ac.th"
     if PUBMED_API_KEY: base_params += f"&api_key={PUBMED_API_KEY}"
     url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={safe_query}&retmax={max_results}&retmode=json{base_params}"
-    
     try:
         res = requests.get(url, timeout=10)
         ids = res.json().get('esearchresult', {}).get('idlist', [])
-        if not ids: return "ไม่พบเปเปอร์ใน PubMed"
+        if not ids: return t("ไม่พบเปเปอร์ใน PubMed", "No papers found in PubMed")
         time.sleep(0.2)
         fetch_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={','.join(ids)}&retmode=xml{base_params}"
         fetch_res = requests.get(fetch_url, timeout=15)
@@ -154,9 +167,9 @@ def search_pubmed_stable(query, max_results=3):
         results = []
         for article in root.findall('.//PubmedArticle'):
             title = article.find('.//ArticleTitle')
-            title_text = title.text if title is not None else "ไม่มีชื่อเรื่อง"
+            title_text = title.text if title is not None else "ไม่มีชื่อเรื่อง / No title"
             abs_tag = article.find('.//AbstractText')
-            abs_text = abs_tag.text[:1000] + "..." if abs_tag is not None and abs_tag.text else "ไม่มีบทคัดย่อ"
+            abs_text = abs_tag.text[:1000] + "..." if abs_tag is not None and abs_tag.text else "ไม่มีบทคัดย่อ / No abstract"
             results.append(f"[PubMed] Title: {title_text}\nAbstract: {abs_text}")
         return "\n\n".join(results)
     except Exception as e:
@@ -164,7 +177,7 @@ def search_pubmed_stable(query, max_results=3):
 
 def search_ebsco_stable(query, max_results=3):
     if not (EBSCO_USER_ID and EBSCO_PASSWORD and EBSCO_PROFILE):
-        return "⚠️ ยังไม่ได้ตั้งค่า EBSCO Secrets"
+        return t("⚠️ ยังไม่ได้ตั้งค่า EBSCO Secrets", "⚠️ EBSCO Secrets not configured")
     
     EBSCO_AUTH_URL = "https://eds-api.ebscohost.com/authservice/rest/UIDAuth"
     EBSCO_SESSION_URL = "https://eds-api.ebscohost.com/edsapi/rest/CreateSession"
@@ -188,13 +201,13 @@ def search_ebsco_stable(query, max_results=3):
         search_res.raise_for_status()
         
         records = search_res.json().get("SearchResult", {}).get("Data", {}).get("Records", [])
-        if not records: return "ไม่พบเปเปอร์ใน EBSCO"
+        if not records: return t("ไม่พบเปเปอร์ใน EBSCO", "No papers found in EBSCO")
 
         results = []
         for rec in records[:max_results]:
             items = rec.get("Items", [])
-            title = next((i.get("Data", "") for i in items if i.get("Name") == "Title"), "ไม่มีชื่อเรื่อง")
-            abstract = next((i.get("Data", "") for i in items if i.get("Name") == "Abstract"), "ไม่มีบทคัดย่อ")
+            title = next((i.get("Data", "") for i in items if i.get("Name") == "Title"), "ไม่มีชื่อเรื่อง / No title")
+            abstract = next((i.get("Data", "") for i in items if i.get("Name") == "Abstract"), "ไม่มีบทคัดย่อ / No abstract")
             results.append(f"[EBSCO] Title: {_strip_html(title)}\nAbstract: {_strip_html(abstract)[:1000]}...")
         return "\n\n".join(results)
     except Exception as e:
@@ -205,7 +218,7 @@ def detect_sources(query: str):
     sources = []
     if "pubmed" in q: sources.append("pubmed")
     if "ebsco" in q: sources.append("ebsco")
-    if not sources and any(k in q for k in ["หาเปเปอร์", "งานวิจัย", "ค้นหางานวิจัย"]):
+    if not sources and any(k in q for k in ["หาเปเปอร์", "งานวิจัย", "ค้นหางานวิจัย", "research", "papers"]):
         sources = ["pubmed", "ebsco"]
     return sources
 
@@ -219,15 +232,12 @@ def run_source_search(sources, cleaned_query, max_results=3):
 # ==========================================
 # 🤖 5. ระบบ RAG & สมองกล AI (AI Inference)
 # ==========================================
-import time
-
 def run_ai_routing(prompt, model_name, api_key):
-    # 🛡️ ดักจับกุญแจว่างเปล่า
     if not api_key or str(api_key).strip() == "":
-        return "⚠️ [ระบบป้องกันภัย]: ไม่พบ API Key หรือกุญแจถูกระงับ กรุณาตรวจสอบ Secrets ครับ"
+        return t("⚠️ [ระบบป้องกันภัย]: ไม่พบ API Key หรือกุญแจถูกระงับ กรุณาตรวจสอบ Secrets ครับ", "⚠️ [Security]: API Key not found or revoked.")
 
     max_retries = 3
-    retry_delay = 2 # หน่วงเวลา 2 วินาทีก่อนลองใหม่
+    retry_delay = 2 
 
     for attempt in range(max_retries):
         try:
@@ -255,35 +265,34 @@ def run_ai_routing(prompt, model_name, api_key):
                     json={"inputs": prompt, "parameters": {"max_new_tokens": 1000, "temperature": 0.3}}, 
                     timeout=30
                 )
-                res.raise_for_status() # ดัก Error 401 หรือ 500 ทันที
+                res.raise_for_status() 
                 if res.status_code == 200:
                     data = res.json()
                     return data[0].get('generated_text', 'No output') if isinstance(data, list) else str(data)
                 return f"HF Error: {res.text}"
                 
-        # ดักจับปัญหาอินเทอร์เน็ตหลุด / หาเซิร์ฟเวอร์ไม่เจอ (NameResolutionError)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
-                continue # ลองวนลูปใหม่
-            return f"⚠️ ระบบเครือข่ายขัดข้อง: ไม่สามารถเชื่อมต่อกับ {model_name} ได้หลังจากพยายาม {max_retries} ครั้ง โปรดลองใหม่ภายหลังครับ"
+                continue 
+            return t("⚠️ ระบบเครือข่ายขัดข้อง โปรดลองใหม่ภายหลัง", "⚠️ Network Error. Please try again later.")
             
-        # ดักจับปัญหาอื่นๆ เช่น กุญแจพัง กุญแจหมดอายุ (401 Unauthorized)
         except requests.exceptions.HTTPError as e:
             if "401" in str(e):
-                 return "⚠️ [แจ้งเตือนความปลอดภัย]: API Key ของท่านถูกปฏิเสธ (อาจถูกเพิกถอนเนื่องจากหลุดไปบนอินเทอร์เน็ต) โปรดเปลี่ยนกุญแจใหม่ครับ"
-            return f"เกิดข้อผิดพลาดจากเซิร์ฟเวอร์ API: {e}"
+                 return t("⚠️ [แจ้งเตือน]: API Key ของท่านถูกปฏิเสธ", "⚠️ [Alert]: Your API Key was unauthorized.")
+            return f"API Error: {e}"
             
         except Exception as e:
-            return f"เกิดข้อผิดพลาดในการประมวลผล: {e}"
+            return f"Processing Error: {e}"
 
 # ==========================================
 # 💻 6. หน้าต่างปฏิบัติการ (Main Workspace)
 # ==========================================
 def main_app():
     username = st.session_state['username']
+    user_role = st.session_state['role']
     
-    # 6.1 ตรวจสอบและสร้าง Session เริ่มต้น
+    # 6.1 ตรวจสอบและสร้าง Session
     if not st.session_state.get('current_session_id'):
         c.execute("SELECT session_id FROM chat_sessions WHERE username=? ORDER BY updated_at DESC LIMIT 1", (username,))
         row = c.fetchone()
@@ -291,30 +300,33 @@ def main_app():
             st.session_state['current_session_id'] = row[0]
         else:
             new_session = str(uuid.uuid4())
-            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, "แชทใหม่"))
+            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, t("แชทใหม่", "New Chat")))
             conn.commit()
             st.session_state['current_session_id'] = new_session
 
     # 6.2 การตั้งค่าแถบด้านข้าง (Sidebar)
     with st.sidebar:
-        user_badge = "👑 ผู้ดูแลระบบ" if st.session_state['role'] == 'admin' else "👨‍🔬 นักวิจัย"
+        # สลับภาษา
+        st.session_state['lang'] = st.radio("Language / ภาษา", ["TH", "EN"], horizontal=True)
+
+        user_badge = "👑 Admin" if user_role == 'admin' else ("⭐ Premium" if user_role == 'premium' else "👨‍🔬 User")
         st.header(f"{user_badge}: {username}")
         
-        if st.button("➕ เพิ่มแชทใหม่", use_container_width=True, type="primary"):
+        if st.button(t("➕ เพิ่มแชทใหม่", "➕ New Chat"), use_container_width=True, type="primary"):
             new_session = str(uuid.uuid4())
-            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, "แชทใหม่"))
+            c.execute("INSERT INTO chat_sessions (session_id, username, title) VALUES (?, ?, ?)", (new_session, username, t("แชทใหม่", "New Chat")))
             conn.commit()
             st.session_state['current_session_id'] = new_session
             st.session_state['messages_loaded'] = False
             st.rerun()
 
-        if st.button("ออกจากระบบ", use_container_width=True):
+        if st.button(t("ออกจากระบบ", "Logout"), use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-        # แสดงรายการประวัติการสนทนาทั้งหมด
+        # ประวัติแชท
         st.divider()
-        st.subheader("💬 ประวัติการสนทนา")
+        st.subheader(t("💬 ประวัติการสนทนา", "💬 Chat History"))
         c.execute("SELECT session_id, title FROM chat_sessions WHERE username=? ORDER BY updated_at DESC", (username,))
         all_sessions = c.fetchall()
         
@@ -326,37 +338,56 @@ def main_app():
                 st.session_state['messages_loaded'] = False
                 st.rerun()
 
-        if st.session_state['role'] == 'admin':
-            st.divider()
-            st.subheader("🛠️ แผงควบคุม (Admin Panel)")
-            c.execute('SELECT COUNT(*) FROM users')
-            user_count = c.fetchone()[0]
-            st.info(f"ผู้ใช้งานในระบบทั้งหมด: {user_count} บัญชี")
-
         st.divider()
-        st.header("⚙️ ตั้งค่ามันสมอง AI")
-        ai_mode = st.radio("โหมดการเข้าถึง:", ["🌟 ฟรี (ส่วนกลาง)", "🔑 ขั้นสูง (BYOK)"])
+        st.header(t("⚙️ ตั้งค่ามันสมอง AI", "⚙️ AI Settings"))
+        
+        # ระบบจำกัดสิทธิ์ (Role Priority)
+        access_options = [t("🌟 ฟรี (ส่วนกลาง)", "🌟 Free (Central)")]
+        if user_role in ['admin', 'premium']:
+            access_options.append(t("🔑 ขั้นสูง (BYOK)", "🔑 Advanced (BYOK)"))
+        
+        ai_mode = st.radio(t("โหมดการเข้าถึง:", "Access Mode:"), access_options)
+        
         selected_model, active_key = None, None
-        if ai_mode == "🌟 ฟรี (ส่วนกลาง)":
+        if ai_mode == t("🌟 ฟรี (ส่วนกลาง)", "🌟 Free (Central)"):
             model_options = list(GEMINI_MODEL_MAP.keys()) + list(HF_MODELS.keys())
-            selected_model = st.selectbox("เลือก AI:", model_options)
+            selected_model = st.selectbox(t("เลือก AI:", "Select AI:"), model_options)
             active_key = CENTRAL_GEMINI_KEY if "Gemini" in selected_model else CENTRAL_HF_TOKEN
         else:
-            selected_model = st.selectbox("เลือกรุ่น Pro (เสียค่าใช้จ่าย):", ["Google Gemini 1.5 Pro", "OpenAI GPT-4o"])
-            active_key = st.text_input("🔑 ใส่ API Key:", type="password")
+            selected_model = st.selectbox(t("เลือกรุ่น Pro (เสียค่าใช้จ่าย):", "Select Pro Model:"), ["Google Gemini 1.5 Pro", "OpenAI GPT-4o"])
+            active_key = st.text_input(t("🔑 ใส่ API Key:", "🔑 Enter API Key:"), type="password")
 
         st.divider()
-        st.header("📚 แหล่งข้อมูลงานวิจัย")
+        st.header(t("📚 แหล่งข้อมูลงานวิจัย", "📚 Research Sources"))
         ebsco_ready = bool(EBSCO_USER_ID and EBSCO_PASSWORD and EBSCO_PROFILE)
-        st.write(f"🟢 PubMed: {'พร้อมใช้งาน' if PUBMED_API_KEY else 'ไม่มี API key'}")
-        st.write(f"{'🟢' if ebsco_ready else '🔴'} EBSCO: {'พร้อมใช้งาน' if ebsco_ready else 'ยังไม่ได้ตั้งค่า'}")
+        st.write(f"🟢 PubMed: {t('พร้อมใช้งาน', 'Ready') if PUBMED_API_KEY else t('ไม่มี API key', 'No API Key')}")
+        st.write(f"{'🟢' if ebsco_ready else '🔴'} EBSCO: {t('พร้อมใช้งาน', 'Ready') if ebsco_ready else t('ยังไม่ได้ตั้งค่า', 'Not Configured')}")
 
         st.divider()
-        st.header("🌪️ โหมดวิเคราะห์ลึก")
-        use_mini_storm = st.checkbox("เปิดใช้งาน Mini STORM Pipeline")
+        st.header(t("🌪️ โหมดวิเคราะห์ลึก", "🌪️ Deep Analysis Mode"))
+        use_mini_storm = st.checkbox(t("เปิดใช้งาน Mini STORM Pipeline", "Enable Mini STORM Pipeline"))
 
-    # 6.3 หน้าจอสนทนาหลัก
-    st.title("🔬 ระบบประมวลผลงานวิจัยอัจฉริยะ")
+    # 6.3 หน้าจอแผงควบคุม Admin
+    if user_role == 'admin':
+        with st.expander(t("🛠️ แผงควบคุมผู้ดูแลระบบ (Admin Panel)", "🛠️ Admin Control Panel")):
+            st.markdown(t("**จัดการระดับบัญชีผู้ใช้งาน (Role: admin, premium, user)**", "**Manage User Priorities (Role: admin, premium, user)**"))
+            
+            c.execute("SELECT username, email, role FROM users")
+            users_data = c.fetchall()
+            df = pd.DataFrame(users_data, columns=["Username", "Email", "Role"])
+            
+            edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="admin_editor")
+            
+            if st.button(t("💾 บันทึกการเปลี่ยนแปลง", "💾 Save Changes"), type="primary"):
+                for index, row in edited_df.iterrows():
+                    # ป้องกันไม่ให้แก้สิทธิ์ตัวเองผ่านหน้านี้โดยไม่ตั้งใจ
+                    if row['Username'] != username:
+                        c.execute("UPDATE users SET role=? WHERE username=?", (row['Role'], row['Username']))
+                conn.commit()
+                st.success(t("อัปเดตสิทธิ์ผู้ใช้งานสำเร็จ!", "User roles updated successfully!"))
+
+    # 6.4 หน้าจอสนทนาหลัก
+    st.title(t("🔬 ระบบประมวลผลงานวิจัยอัจฉริยะ", "🔬 Intelligent Research Processing System"))
     current_session = st.session_state['current_session_id']
     
     if not st.session_state['messages_loaded']:
@@ -368,15 +399,14 @@ def main_app():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if query := st.chat_input("พิมพ์คำสั่ง (เช่น 'หาเปเปอร์เกี่ยวกับโปรตีนพืชใน pubmed')"):
-        if ai_mode == "🔑 ขั้นสูง (BYOK)" and not active_key:
-            st.error("⚠️ โหมด BYOK บังคับให้ใส่ API Key ส่วนตัวก่อนครับ!")
+    if query := st.chat_input(t("พิมพ์คำสั่ง (เช่น 'หาเปเปอร์เกี่ยวกับโปรตีนพืชใน pubmed')", "Enter command (e.g., 'find papers on plant protein in pubmed')")):
+        if ai_mode == t("🔑 ขั้นสูง (BYOK)", "🔑 Advanced (BYOK)") and not active_key:
+            st.error(t("⚠️ โหมด BYOK บังคับให้ใส่ API Key ส่วนตัวก่อนครับ!", "⚠️ BYOK Mode requires your personal API Key!"))
             return
 
-        # อัปเดตชื่อแชทอัตโนมัติหากยังเป็น "แชทใหม่"
         c.execute("SELECT title FROM chat_sessions WHERE session_id=?", (current_session,))
         current_title = c.fetchone()[0]
-        if current_title == "แชทใหม่":
+        if current_title in ["แชทใหม่", "New Chat"]:
             new_title = query[:25] + "..." if len(query) > 25 else query
             c.execute("UPDATE chat_sessions SET title=? WHERE session_id=?", (new_title, current_session))
             conn.commit()
@@ -391,34 +421,36 @@ def main_app():
         with st.chat_message("assistant"):
             response_ui = ""
             context_text = ""
-
             sources = detect_sources(query)
+            
             if sources:
-                with st.spinner(f"🔍 กำลังดึงข้อมูลจาก {', '.join(s.upper() for s in sources)}..."):
+                with st.spinner(f"🔍 {t('กำลังดึงข้อมูลจาก', 'Fetching data from')} {', '.join(s.upper() for s in sources)}..."):
                     search_kw = query.lower()
-                    for junk in ["ใน pubmed", "ใน ebsco", "จาก pubmed", "จาก ebsco", "หาเปเปอร์", "ค้นหางานวิจัย"]:
+                    for junk in ["ใน pubmed", "ใน ebsco", "จาก pubmed", "จาก ebsco", "หาเปเปอร์", "ค้นหางานวิจัย", "in pubmed", "in ebsco"]:
                         search_kw = search_kw.replace(junk, "")
                     context_text = run_source_search(sources, search_kw.strip())
-                    response_ui += f"**📖 ข้อมูลอ้างอิงจากฐานข้อมูล:**\n{context_text}\n\n---\n"
+                    response_ui += f"**📖 {t('ข้อมูลอ้างอิงจากฐานข้อมูล:', 'References from Database:')}**\n{context_text}\n\n---\n"
                     st.markdown(response_ui)
 
             if use_mini_storm and context_text and "Error" not in context_text:
                 response_ui += "🌪️ **[Mini STORM Pipeline Initiated]**\n"
-                with st.spinner("⚙️ กำลังร่างโครงสร้าง (Outline)..."):
-                    outline_result = run_ai_routing(f"จากบทคัดย่อเหล่านี้ สร้างโครงร่าง 3 หัวข้อหลัก:\n{context_text}", selected_model, active_key)
-                    response_ui += f"**📑 โครงร่างงานวิจัย:**\n{outline_result}\n\n"
-                    st.markdown(f"**📑 โครงร่างงานวิจัย:**\n{outline_result}\n\n")
+                with st.spinner(t("⚙️ กำลังร่างโครงสร้าง (Outline)...", "⚙️ Drafting Outline...")):
+                    outline_prompt = t(f"จากบทคัดย่อเหล่านี้ สร้างโครงร่าง 3 หัวข้อหลัก:\n{context_text}", f"From these abstracts, create a 3-point outline:\n{context_text}")
+                    outline_result = run_ai_routing(outline_prompt, selected_model, active_key)
+                    response_ui += f"**📑 {t('โครงร่างงานวิจัย:', 'Research Outline:')}**\n{outline_result}\n\n"
+                    st.markdown(f"**📑 {t('โครงร่างงานวิจัย:', 'Research Outline:')}**\n{outline_result}\n\n")
 
-                with st.spinner("⚙️ กำลังเขียนสรุปเชิงลึก..."):
-                    final_result = run_ai_routing(f"จากโครงร่างนี้:\n{outline_result}\n\nจงเขียนสรุปเชิงลึกโดยใช้ข้อมูล:\n{context_text}", selected_model, active_key)
-                    response_ui += f"**📝 บทสรุปเชิงลึก:**\n{final_result}"
-                    st.markdown(f"**📝 บทสรุปเชิงลึก:**\n{final_result}")
+                with st.spinner(t("⚙️ กำลังเขียนสรุปเชิงลึก...", "⚙️ Writing Deep Summary...")):
+                    final_prompt = t(f"จากโครงร่างนี้:\n{outline_result}\n\nจงเขียนสรุปเชิงลึกโดยใช้ข้อมูล:\n{context_text}", f"Based on this outline:\n{outline_result}\n\nWrite a detailed summary using:\n{context_text}")
+                    final_result = run_ai_routing(final_prompt, selected_model, active_key)
+                    response_ui += f"**📝 {t('บทสรุปเชิงลึก:', 'Detailed Summary:')}**\n{final_result}"
+                    st.markdown(f"**📝 {t('บทสรุปเชิงลึก:', 'Detailed Summary:')}**\n{final_result}")
             else:
-                with st.spinner(f"🤖 กำลังประมวลผลด้วย {selected_model}..."):
-                    ai_prompt = f"สรุปข้อมูลและตอบคำถามโดยอิงจากงานวิจัยที่ให้มาเป็นหลัก\n\n[อ้างอิง]:\n{context_text}\n\n[คำถาม]: {query}" if context_text and "Error" not in context_text and "ไม่พบ" not in context_text else query
+                with st.spinner(f"🤖 {t('กำลังประมวลผลด้วย', 'Processing with')} {selected_model}..."):
+                    ai_prompt = t(f"สรุปข้อมูลและตอบคำถามโดยอิงจากงานวิจัยที่ให้มาเป็นหลัก\n\n[อ้างอิง]:\n{context_text}\n\n[คำถาม]: {query}", f"Summarize and answer based primarily on the provided research.\n\n[Reference]:\n{context_text}\n\n[Question]: {query}") if context_text and "Error" not in context_text and "ไม่พบ" not in context_text else query
                     ai_result = run_ai_routing(ai_prompt, selected_model, active_key)
-                    response_ui += f"🤖 **[ผลการวิเคราะห์]:**\n{ai_result}"
-                    st.markdown(f"🤖 **[ผลการวิเคราะห์]:**\n{ai_result}")
+                    response_ui += f"🤖 **[{t('ผลการวิเคราะห์', 'Analysis Result')}]:**\n{ai_result}"
+                    st.markdown(f"🤖 **[{t('ผลการวิเคราะห์', 'Analysis Result')}]:**\n{ai_result}")
 
             st.session_state.messages.append({"role": "assistant", "content": response_ui})
             c.execute("INSERT INTO chat_history (session_id, username, sender, message) VALUES (?, ?, ?, ?)", (current_session, username, 'assistant', response_ui))
