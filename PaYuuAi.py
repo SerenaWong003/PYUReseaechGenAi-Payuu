@@ -12,7 +12,6 @@ from datetime import datetime
 from urllib.parse import quote
 import google.generativeai as genai
 
-<div class="g-signin2" data-onsuccess="onSignIn"></div>
 function onSignIn(googleUser) {
   var profile = googleUser.getBasicProfile();
   console.log('ID: ' + profile.getId()); // Do not send to your backend! Use an ID token instead.
