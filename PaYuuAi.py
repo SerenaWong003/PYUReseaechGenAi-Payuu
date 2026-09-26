@@ -18,7 +18,7 @@ import pandas as pd # เพิ่ม pandas สำหรับทำตาร�
 # ==========================================
 st.set_page_config(page_title="Payap Research Gen-AI : Payuu", page_icon="🌪️", layout="wide")
 
-CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","")
+
 CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","")
 PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY","")
 
@@ -29,17 +29,12 @@ EBSCO_ORG = st.secrets.get("EBSCO_ORG", "")
 
 _missing_core = [k for k, v in {
     "GEMINI_FREE_KEY": CENTRAL_GEMINI_KEY,
-    "HF_TOKEN": CENTRAL_HF_TOKEN,
+  
 }.items() if not v]
 if _missing_core:
     st.warning(f"⚠️ ยังไม่ได้ตั้งค่า secrets: {', '.join(_missing_core)} — โหมด 'ฟรี (ส่วนกลาง)' อาจใช้งานไม่ได้")
 
-HF_MODELS = {
-    "SeaLLMs (ภาษาไทย/Thai)": "SeaLLMs/SeaLLM-7B-v2.5",
-    "Vicuna (ตรรกะ/Logic)": "lmsys/vicuna-7b-v1.5",
-    "Alpaca (จัดการฟอร์แมต/Format)": "chavinlo/alpaca-native",
-    "Gorilla (เขียนโค้ด/API)": "gorilla-llm/gorilla-7b-hf-v0",
-    "ChatGLM (อ่านบริบทยาว/Long context)": "THUDM/chatglm3-6b",}
+
 GEMINI_MODEL_MAP = {
     "Gemini 3.1 Flash (ล่าสุด)": "gemini-3.1-flash-preview",
     "Google Gemini 3.1 Pro (ล่าสุด)": "gemini-3.1-pro-preview",
