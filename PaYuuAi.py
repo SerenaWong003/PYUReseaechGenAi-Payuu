@@ -18,9 +18,9 @@ import pandas as pd # เพิ่ม pandas สำหรับทำตาร�
 # ==========================================
 st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
 
-CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","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")
+CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","")
 CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","")
-PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY","55ca775dbcce505de81e116837ccbff61709")
+PUBMED_API_KEY = st.secrets.get("PUBMED_API_KEY","")
 
 EBSCO_USER_ID = st.secrets.get("EBSCO_USER_ID", "")
 EBSCO_PASSWORD = st.secrets.get("EBSCO_PASSWORD", "")
