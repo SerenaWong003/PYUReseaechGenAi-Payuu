@@ -35,10 +35,10 @@ if _missing_core:
     st.warning(f"⚠️ ยังไม่ได้ตั้งค่า secrets: {', '.join(_missing_core)} — โหมด 'ฟรี (ส่วนกลาง)' อาจใช้งานไม่ได้")
 
 
+# อัปเดตรายชื่อโมเดลที่ใช้งานได้จริง ณ ปัจจุบัน
 GEMINI_MODEL_MAP = {
-    "Gemini 3.1 Flash (ล่าสุด)": "gemini-3.1-flash-preview",
-    "Google Gemini 3.1 Pro (ล่าสุด)": "gemini-3.1-pro-preview",
-    "Gemini (โมเดลพื้นฐาน)": "gemini-pro",
+    "Gemini 1.5 Flash (รวดเร็ว)": "gemini-1.5-flash-latest",
+    "Gemini 1.5 Pro (อัจฉริยะ)": "gemini-1.5-pro-latest"
 }
 # ==========================================
 # 🌐 ระบบภาษา (Language Translation Helper)
