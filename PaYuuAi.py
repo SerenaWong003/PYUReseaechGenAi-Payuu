@@ -367,10 +367,10 @@ def main_app():
         st.header(t("🌪️ โหมดวิเคราะห์ลึก", "🌪️ Deep Analysis Mode"))
         use_mini_storm = st.checkbox(t("เปิดใช้งาน Mini STORM Pipeline", "Enable Mini STORM Pipeline"))
 
-    # 6.3 หน้าจอแผงควบคุม Admin
+ # 6.3 หน้าจอแผงควบคุม Admin
     if user_role == 'admin':
         with st.expander(t("🛠️ แผงควบคุมผู้ดูแลระบบ (Admin Panel)", "🛠️ Admin Control Panel")):
-            st.markdown(t("**จัดการระดับบัญชีผู้ใช้งาน (Role: admin, premium, user)**", "**Manage User Priorities (Role: admin, premium, user)**"))
+            st.markdown(t("**1. จัดการระดับบัญชีผู้ใช้งาน (Role)**", "**1. Manage User Roles**"))
             
             c.execute("SELECT username, email, role FROM users")
             users_data = c.fetchall()
@@ -378,12 +378,47 @@ def main_app():
             
             edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="admin_editor")
             
-            if st.button(t("💾 บันทึกการเปลี่ยนแปลง", "💾 Save Changes"), type="primary"):
+            if st.button(t("💾 บันทึกการเปลี่ยนแปลงสิทธิ์", "💾 Save Role Changes"), type="primary"):
                 for index, row in edited_df.iterrows():
                     # ป้องกันไม่ให้แก้สิทธิ์ตัวเองผ่านหน้านี้โดยไม่ตั้งใจ
                     if row['Username'] != username:
                         c.execute("UPDATE users SET role=? WHERE username=?", (row['Role'], row['Username']))
                 conn.commit()
+                st.success(t("อัปเดตสิทธิ์ผู้ใช้งานสำเร็จ!", "User roles updated successfully!"))
+
+            st.divider()
+            
+            st.markdown(t("**2. 🚨 จัดการขั้นเด็ดขาด (ลบผู้ใช้ / รีเซ็ตรหัสผ่าน)**", "**2. 🚨 Advanced Actions (Delete / Reset Password)**"))
+            
+            # ดึงรายชื่อผู้ใช้ทั้งหมด (ยกเว้นแอดมินที่กำลังล็อกอินอยู่ เพื่อป้องกันการเผลอลบตัวเอง)
+            target_user = st.selectbox(t("เลือกผู้ใช้งานเป้าหมาย:", "Select Target User:"), [u[0] for u in users_data if u[0] != username])
+            
+            col1, col2 = st.columns(2)
+            with col2:
+                new_reset_pwd = st.text_input(t("รหัสผ่านใหม่ (พิมพ์เพื่อเปลี่ยนให้ผู้ใช้นี้):", "New Password (for reset):"), type="password")
+                if st.button(t("🔑 บังคับรีเซ็ตรหัสผ่าน", "🔑 Force Reset Password"), use_container_width=True):
+                    if target_user and new_reset_pwd:
+                        hashed_pwd, salt_hex = hash_password(new_reset_pwd)
+                        c.execute("UPDATE users SET password=?, salt=? WHERE username=?", (hashed_pwd, salt_hex, target_user))
+                        conn.commit()
+                        st.success(f"✅ เปลี่ยนรหัสผ่านใหม่ให้คุณ {target_user} สำเร็จแล้วครับ!")
+                    else:
+                        st.error("⚠️ กรุณากรอกรหัสผ่านใหม่ที่ต้องการตั้งให้ผู้ใช้นี้ก่อนครับ")
+
+            with col1:
+                st.write("") # ดันปุ่มให้ตรงกัน
+                st.write("")
+                if st.button(t("🗑️ ลบผู้ใช้งานนี้อย่างถาวร", "🗑️ Delete User Permanently"), type="primary", use_container_width=True):
+                    if target_user:
+                        # ลบข้อมูลผู้ใช้
+                        c.execute("DELETE FROM users WHERE username=?", (target_user,))
+                        # ลบประวัติแชทและ Session ป้องกันขยะตกค้างในฐานข้อมูล
+                        c.execute("DELETE FROM chat_sessions WHERE username=?", (target_user,))
+                        c.execute("DELETE FROM chat_history WHERE username=?", (target_user,))
+                        conn.commit()
+                        st.success(f"🧹 ลบบัญชี {target_user} และประวัติทั้งหมดออกจากระบบเรียบร้อยแล้วครับ!")
+                        time.sleep(2)
+                        st.rerun()
                 st.success(t("อัปเดตสิทธิ์ผู้ใช้งานสำเร็จ!", "User roles updated successfully!"))
 
     # 6.4 หน้าจอสนทนาหลัก
