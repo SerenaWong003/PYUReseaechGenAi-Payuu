@@ -41,11 +41,10 @@ HF_MODELS = {
     "Gorilla (เขียนโค้ด/API)": "gorilla-llm/gorilla-7b-hf-v0",
     "ChatGLM (อ่านบริบทยาว/Long context)": "THUDM/chatglm3-6b",}
 GEMINI_MODEL_MAP = {
-    "Gemini 1.5 Flash": "gemini-1.5-flash",
-    "Google Gemini 1.5 Pro": "gemini-1.5-pro",
+    "Gemini 2.5 Flash": "gemini-2.5-flash",
+    "Google Gemini 2.5 Pro": "gemini-2.5-pro",
     "Gemini Pro 1.0 (สำรอง)": "gemini-pro",
 }
-
 
 # ==========================================
 # 🌐 ระบบภาษา (Language Translation Helper)
