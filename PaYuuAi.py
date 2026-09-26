@@ -491,3 +491,90 @@ if not st.session_state['logged_in']:
     login_register_page()
 else:
     main_app()
+import os
+import google.generativeai as genai
+# หากได้ API Key ของ Claude มาแล้ว สามารถ import anthropic เข้ามาใช้งานแทนในฟังก์ชันได้เลย
+
+# 🛡️ ส่วนที่ 1: การตั้งค่าความปลอดภัย (รันผ่าน Streamlit secrets หรือ .env)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "ใส่_KEY_ชั่วคราวตรงนี้")
+genai.configure(api_key=GEMINI_API_KEY)
+
+# แนะนำให้ใช้รุ่น Flash สำหรับ Agent ค้นหา และรุ่น Pro สำหรับ Agent สังเคราะห์เนื้อหา
+search_agent_model = genai.GenerativeModel("gemini-1.5-flash-latest")
+synthesis_agent_model = genai.GenerativeModel("gemini-1.5-pro-latest")
+
+def agent_1_perspective_generator(topic):
+    """
+    ฝ่ายกำหนดมุมมอง: สร้างทีมนักวิจัยจำลองเพื่อมองหัวข้อจากหลายมิติ
+    """
+    prompt = f"""
+    คุณคือนักวิจัยอาวุโส หัวข้อวิจัยคือ: '{topic}'
+    หน้าที่ของคุณคือระบุมุมมองที่แตกต่างกัน 3 มุมมองที่จำเป็นต่อการวิเคราะห์หัวข้อนี้อย่างรอบด้าน 
+    (เช่น มุมมองทางวิทยาศาสตร์การอาหาร, มุมมองทางเศรษฐศาสตร์/SROI, มุมมองทางกฎหมายทรัพย์สินทางปัญญา)
+    และตั้งคำถามเจาะลึก 2 คำถามสำหรับแต่ละมุมมอง
+    
+    ตอบกลับในรูปแบบ List เท่านั้น
+    """
+    response = search_agent_model.generate_content(prompt)
+    return response.text
+
+def agent_2_information_retriever(perspectives_and_questions):
+    """
+    ฝ่ายสืบค้นและรวบรวม: ในระบบจริง ฟังก์ชันนี้จะไปเรียก API อย่าง Tavily หรือ Scopus 
+    แต่ในเบื้องต้นเราจะให้ AI จำลองการค้นหาจากฐานข้อมูลความรู้ของตัวเองก่อน
+    """
+    prompt = f"""
+    คุณคือผู้ช่วยนักวิจัยที่เชี่ยวชาญการค้นคว้ารายละเอียด ตอบคำถามและรวบรวมข้อเท็จจริง
+    โดยอ้างอิงจากมุมมองและคำถามเหล่านี้:
+    
+    {perspectives_and_questions}
+    
+    จงตอบคำถามแต่ละข้อด้วยข้อมูลเชิงลึกทางวิชาการ ระบุข้อจำกัดของข้อมูล และจำลองการอ้างอิง (Citations)
+    """
+    response = search_agent_model.generate_content(prompt)
+    return response.text
+
+def agent_3_storm_synthesizer(topic, researched_data):
+    """
+    ฝ่ายสังเคราะห์และเรียบเรียง: นำข้อมูลดิบทั้งหมดมาร้อยเรียงเป็นโครงร่างงานวิจัยที่สมบูรณ์
+    """
+    prompt = f"""
+    คุณคือหัวหน้าบรรณาธิการวิชาการ จงเขียนโครงร่างบทความวิจัย (Comprehensive Outline) 
+    สำหรับหัวข้อ '{topic}' โดยใช้ข้อมูลจากการค้นคว้าด้านล่างนี้เท่านั้น:
+    
+    ข้อมูลจากการค้นคว้า:
+    {researched_data}
+    
+    โครงสร้างเอกสารต้องประกอบด้วย:
+    1. บทนำและบริบท
+    2. หัวข้อหลักพร้อมประเด็นย่อย
+    3. บทวิเคราะห์เชิงวิพากษ์ (เชื่อมโยงข้อมูลแต่ละมุมมองเข้าด้วยกัน)
+    4. ช่องว่างการวิจัย (Research Gaps)
+    """
+    response = synthesis_agent_model.generate_content(prompt)
+    return response.text
+
+# ==========================================
+# 🚀 ระบบสั่งการหลัก (Main Pipeline)
+# ==========================================
+if __name__ == "__main__":
+    # ตัวอย่างหัวข้อวิจัยที่สามารถปรับเปลี่ยนได้ตามต้องการ
+    research_topic = "การประเมิน SROI และความเป็นไปได้เชิงพาณิชย์ของเครื่องดื่มโปรตีนไข่น้ำ (Watermeal) สำหรับผู้สูงอายุ"
+    
+    print(f"🔍 เริ่มต้นกระบวนการ STORM สำหรับหัวข้อ: {research_topic}\n")
+    
+    print("⏳ Agent 1 กำลังกำหนดมุมมองและตั้งคำถาม...")
+    perspectives = agent_1_perspective_generator(research_topic)
+    print(">> สำเร็จ\n")
+    
+    print("⏳ Agent 2 กำลังจำลองการสืบค้นข้อมูลเชิงลึก...")
+    raw_data = agent_2_information_retriever(perspectives)
+    print(">> สำเร็จ\n")
+    
+    print("⏳ Agent 3 กำลังสังเคราะห์ข้อมูลและจัดทำโครงร่างงานวิจัย...")
+    final_outline = agent_3_storm_synthesizer(research_topic, raw_data)
+    
+    print("✅ โครงร่างงานวิจัยเสร็จสมบูรณ์:\n")
+    print("-" * 50)
+    print(final_outline)
+    print("-" * 50)
