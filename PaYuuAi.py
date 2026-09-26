@@ -343,7 +343,7 @@ def main_app():
         
         selected_model, active_key = None, None
         if ai_mode == t("🌟 ฟรี (ส่วนกลาง)", "🌟 Free (Central)"):
-            model_options = list(GEMINI_MODEL_MAP.keys()) + list(HF_MODELS.keys())
+            model_options = list(GEMINI_MODEL_MAP.keys())
             selected_model = st.selectbox(t("เลือก AI:", "Select AI:"), model_options)
             active_key = CENTRAL_GEMINI_KEY if "Gemini" in selected_model else CENTRAL_HF_TOKEN
         else:
