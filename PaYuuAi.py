@@ -16,7 +16,7 @@ import pandas as pd # เพิ่ม pandas สำหรับทำตาร�
 # ==========================================
 # ⚙️ 1. ตั้งค่าระบบและกุญแจส่วนกลาง
 # ==========================================
-st.set_page_config(page_title="Payap Research Gen-AI", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Payap Research Gen-AI : Payuu", page_icon="🌪️", layout="wide")
 
 CENTRAL_HF_TOKEN = st.secrets.get("HF_TOKEN","")
 CENTRAL_GEMINI_KEY = st.secrets.get("GEMINI_FREE_KEY","")
@@ -43,8 +43,9 @@ HF_MODELS = {
 }
 
 GEMINI_MODEL_MAP = {
-    "Gemini 1.5 Flash": "gemini-1.5-flash",
-    "Google Gemini 1.5 Pro": "gemini-1.5-pro",
+    "Gemini 1.5 Flash": "gemini-1.5-flash-latest",
+    "Google Gemini 1.5 Pro": "gemini-1.5-pro-latest",
+}
 }
 
 # ==========================================
